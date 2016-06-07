@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Map with Leaflet</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/leaflet.css" />
+  <style>
+    #mapid {
+      height: 600px;
+    }
+  </style>
+</head>
+<body>
+
+<div id="mapid"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/leaflet.js"></script>
+<script src="https://d3js.org/d3.v3.min.js" charset="utf-8"></script>
+
+<script>
+var map = L.map('mapid').setView([42.435, -72.67], 16);
+
+L.tileLayer('http://stamen-tiles-{s}.a.ssl.fastly.net/terrain/{z}/{x}/{y}.{ext}', {
+  attribution: 'Map tiles by <a href="http://stamen.com">Stamen Design</a>, <a href="http://creativecommons.org/licenses/by/3.0">CC BY 3.0</a> &mdash; Map data &copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+  subdomains: 'abcd',
+  minZoom: 4,
+  maxZoom: 18,
+  ext: 'png'
+}).addTo(map);
+
+d3.csv('data/WBCoordsForD3JS.csv', function (error, data) {
+  if (error) throw error;
+
+  data.forEach(function (d) {
+    d.lat = +d.lat;
+    d.lon = +d.lon;
+  });
+
+  data.forEach(function (d) {
+    L.circle([d.lat, d.lon], 10)
+      .addTo(map);
+  });
+
+
+});
+
+
+</script>
+</body>
+</html>

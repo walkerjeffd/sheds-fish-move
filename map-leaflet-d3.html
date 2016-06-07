@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Map with Leaflet</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/leaflet.css" />
+  <style>
+    #map {
+      height: 600px;
+    }
+
+    div.tooltip {
+      position: absolute;
+      padding: 2px;
+      font: 12px sans-serif;
+      background: #fff;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/leaflet.js"></script>
+<script src="https://d3js.org/d3.v3.min.js" charset="utf-8"></script>
+
+<script>
+// see: http://bl.ocks.org/d3noob/9267535
+
+var map = L.map('map').setView([42.435, -72.67], 16);
+
+L.tileLayer('http://stamen-tiles-{s}.a.ssl.fastly.net/terrain/{z}/{x}/{y}.{ext}', {
+  attribution: 'Map tiles by <a href="http://stamen.com">Stamen Design</a>, <a href="http://creativecommons.org/licenses/by/3.0">CC BY 3.0</a> &mdash; Map data &copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+  subdomains: 'abcd',
+  minZoom: 4,
+  maxZoom: 18,
+  ext: 'png'
+}).addTo(map);
+
+map._initPathRoot();
+
+var svg = d3.select("#map").select("svg"),
+g = svg.append("g");
+
+var tooltip = d3.select("body").append("div")
+  .attr("class", "tooltip")
+  .style("opacity", 0);
+
+d3.csv('data/WBCoordsForD3JS.csv', function (error, data) {
+  if (error) throw error;
+
+  data.forEach(function (d) {
+    d.lat = +d.lat;
+    d.lon = +d.lon;
+  });
+
+  var riverSet = d3.set();
+
+  data.forEach(function(d) {
+    // add river to set
+    riverSet.add(d.river1);
+
+    // add LatLng object
+    d.LatLng = new L.LatLng(d.lat, d.lon);
+  });
+
+  var riverColors = d3.scale.category10()
+    .domain(riverSet.values());
+
+  var feature = g.selectAll("circle")
+    .data(data)
+    .enter().append("circle")
+    .style("stroke", "black")
+    .style("opacity", 0.6)
+    .style("fill", function (d) {
+      return riverColors(d.river1);
+    })
+    .attr("r", 5)
+    .on("mouseover", function (d) {
+      d3.select(this)
+        .attr("r", 10);
+
+      tooltip.html(d.river1 + ' - ' + d.section)
+        .style("left", (d3.event.pageX + 15) + "px")
+        .style("top", (d3.event.pageY - 15) + "px")
+        .transition()
+        .duration(100)
+        .style("opacity", 1);
+    })
+    .on("mouseout", function (d) {
+      d3.select(this)
+        .attr("r", 5);
+
+      tooltip.transition()
+        .duration(100)
+        .style("opacity", 0);
+    });
+
+    map.on("viewreset", update);
+    update();
+
+    function update() {
+      feature.attr("transform", function(d) {
+        return "translate("+
+          map.latLngToLayerPoint(d.LatLng).x +","+
+          map.latLngToLayerPoint(d.LatLng).y +")";
+      });
+    }
+});
+
+
+</script>
+</body>
+</html>
