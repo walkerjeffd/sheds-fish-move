@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title></title>
+  <!-- <link rel="stylesheet" href="http://cdnjs.cloudflare.com/ajax/libs/dc/1.7.5/dc.min.css"> -->
+  <link rel="stylesheet" href="http://dc-js.github.io/dc.js/css/dc.css">
+</head>
+<body>
+
+<div id="river-chart">
+  <strong>River</strong>
+  <span class="reset" style="display: none;"> <span class="filter"></span></span>
+  <div class="clearfix"></div>
+</div>
+<div id="year-chart">
+  <strong>Year</strong>
+  <span class="reset" style="display: none;"> <span class="filter"></span></span>
+  <div class="clearfix"></div>
+</div>
+<div id="species-chart">
+  <strong>Species</strong>
+  <span class="reset" style="display: none;"> <span class="filter"></span></span>
+  <div class="clearfix"></div>
+</div>
+<div id="section-chart">
+  <strong>Section</strong>
+  <span class="reset" style="display: none;"> <span class="filter"></span></span>
+  <div class="clearfix"></div>
+</div>
+<div id="season-chart">
+  <strong>Season</strong>
+  <span class="reset" style="display: none;"> <span class="filter"></span></span>
+  <div class="clearfix"></div>
+</div>
+<div id="len-chart">
+  <strong>Fish Length</strong>
+  <span class="reset" style="display: none;"> <span class="filter"></span></span>
+  <div class="clearfix"></div>
+</div>
+<div id="size-chart">
+  <strong>Size Chart</strong>
+  <span class="reset" style="display: none;"> <!-- <span class="filter"></span> --></span>
+  <div class="clearfix"></div>
+</div>
+
+<script src="https://d3js.org/d3.v3.min.js" charset="utf-8"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/crossfilter/1.3.12/crossfilter.js"></script>
+<!-- <script src="http://cdnjs.cloudflare.com/ajax/libs/dc/1.6.0/dc.min.js"></script> -->
+<script src="http://dc-js.github.io/dc.js/js/dc.js"></script>
+
+<script>
+var data, ndx;
+d3.csv('data/coreDataOut.csv', function (rawData) {
+  data = rawData.map(function (d) {
+    return {
+      year: +d.year,
+      section: +d.section,
+      len: +d.len,
+      wt: +d.wt,
+      season: d.seasonStr,
+      species: d.species,
+      river: d.river
+    };
+  }).filter(function (d) {
+    return Object.keys(d).map(function (key) {
+        return d[key];
+      }).every(function (e) {
+        return typeof e === 'string' || isFinite(e);
+      });
+  });
+
+  ndx = crossfilter(data);
+  var all = ndx.groupAll();
+
+  var yearDim = ndx.dimension(function (d) {
+    return d.year;
+  });
+  var yearGroup = yearDim.group().reduceCount();
+
+  var sectionDim = ndx.dimension(function (d) {
+    return d.section;
+  });
+  var sectionGroup = sectionDim.group().reduceCount();
+
+  var lenDim = ndx.dimension(function (d) {
+    return Math.floor(d.len / 10) * 10;
+  });
+  var lenGroup = lenDim.group().reduceCount();
+
+  var seasonDim = ndx.dimension(function (d) {
+    return d.season;
+  });
+  var seasonGroup = seasonDim.group().reduceCount();
+
+  var speciesDim = ndx.dimension(function (d) {
+    return d.species;
+  });
+  var speciesGroup = speciesDim.group().reduceCount();
+
+  var riverDim = ndx.dimension(function (d) {
+    return d.river;
+  });
+  var riverGroup = riverDim.group().reduceCount();
+
+  var sizeDim = ndx.dimension(function (d) {
+    return [d.len, d.wt];
+  });
+  var sizeGroup = sizeDim.group();
+
+  var yearChart = dc.barChart('#year-chart')
+    .width(400)
+    .height(200)
+    .margins({top: 10, right: 50, bottom: 30, left: 40})
+    .dimension(yearDim)
+    .group(yearGroup)
+    .transitionDuration(10)
+    .elasticY(true)
+    .centerBar(true)
+    .gap(1)
+    .alwaysUseRounding(true)
+    .round(function(n) { return Math.floor(n) + 0.5; })
+    .x(d3.scale.linear().domain([1996, 2016]))
+    .renderHorizontalGridLines(true)
+    .filterPrinter(function (filters) {
+      var filter = filters[0];
+      s = '[' + (filter[0] + 0.5) + ' -> ' + (filter[1] - 0.5) + ']';
+      return s;
+    });;
+
+  var sectionChart = dc.barChart('#section-chart')
+    .width(400)
+    .height(200)
+    .margins({top: 10, right: 50, bottom: 30, left: 40})
+    .dimension(sectionDim)
+    .group(sectionGroup)
+    .transitionDuration(10)
+    .elasticY(true)
+    .centerBar(true)
+    .gap(1)
+    .x(d3.scale.linear().domain([-1, 47]))
+    .renderHorizontalGridLines(true);
+
+  var seasonChart = dc.barChart('#season-chart')
+    .width(400)
+    .height(200)
+    .margins({top: 10, right: 50, bottom: 30, left: 40})
+    .dimension(seasonDim)
+    .group(seasonGroup)
+    .transitionDuration(10)
+    .elasticY(true)
+    .gap(1)
+    .x(d3.scale.ordinal().domain(["Winter", "Spring", "Summer", "Autumn"]))
+    .xUnits(dc.units.ordinal)
+    .renderHorizontalGridLines(true);
+
+  var lenChart = dc.barChart('#len-chart')
+    .width(400)
+    .height(200)
+    .margins({top: 10, right: 50, bottom: 30, left: 40})
+    .dimension(lenDim)
+    .group(lenGroup)
+    .transitionDuration(10)
+    .elasticY(true)
+    .centerBar(true)
+    // .gap(1)
+    .xUnits(function () { return 40; })
+    .x(d3.scale.linear().domain([0, 400]))
+    .renderHorizontalGridLines(true);
+
+  var speciesChart = dc.barChart('#species-chart')
+    .width(400)
+    .height(200)
+    .margins({top: 10, right: 50, bottom: 30, left: 40})
+    .dimension(speciesDim)
+    .group(speciesGroup)
+    .transitionDuration(10)
+    .elasticY(true)
+    .gap(1)
+    .x(d3.scale.ordinal().domain(["ats", "bkt", "bnt"]))
+    .xUnits(dc.units.ordinal)
+    .renderHorizontalGridLines(true);
+
+  var riverChart = dc.barChart('#river-chart')
+    .width(400)
+    .height(200)
+    .margins({top: 10, right: 50, bottom: 30, left: 40})
+    .dimension(riverDim)
+    .group(riverGroup)
+    .transitionDuration(10)
+    .elasticY(true)
+    .gap(1)
+    .x(d3.scale.ordinal().domain(["IL", "OL", "OS", "WB"]))
+    .xUnits(dc.units.ordinal)
+    .renderHorizontalGridLines(true);
+
+  var sizeChart = dc.scatterPlot('#size-chart')
+    .width(400)
+    .height(400)
+    .x(d3.scale.linear().domain([50, 400]))
+    .yAxisLabel('Weight')
+    .xAxisLabel('Length')
+    .clipPadding(10)
+    .dimension(sizeDim)
+    .excludedColor('#aaa')
+    .group(sizeGroup);
+
+  yearChart.xAxis().tickFormat(function (v) {
+    return v.toString();
+  });
+
+  dc.constants.EVENT_DELAY = 0;
+  dc.renderAll();
+});
+</script>
+</body>
+</html>

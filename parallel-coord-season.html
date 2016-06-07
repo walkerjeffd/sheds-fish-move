@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Fish Move - Parallel</title>
+
+<style>
+
+svg {
+  font: 10px sans-serif;
+}
+
+.background path {
+  fill: none;
+  stroke: #ccc;
+  stroke-opacity: .0;
+  shape-rendering: crispEdges;
+}
+
+.foreground path {
+  fill: none;
+  stroke: steelblue;
+  stroke-opacity: 0.2;
+}
+
+.brush .extent {
+  fill-opacity: .3;
+  stroke: #fff;
+  shape-rendering: crispEdges;
+}
+
+.axis line,
+.axis path {
+  fill: none;
+  stroke: #000;
+  shape-rendering: crispEdges;
+}
+
+.axis text {
+  text-shadow: 0 1px 0 #fff;
+  cursor: move;
+}
+
+</style>
+</head>
+<body>
+
+<script src="https://d3js.org/d3.v3.min.js" charset="utf-8"></script>
+<script>
+var m = [30, 10, 10, 50],
+    w = 960 - m[1] - m[3],
+    h = 500 - m[0] - m[2];
+
+var x = d3.scale.ordinal().rangePoints([0, w], 1),
+    y = {},
+    dragging = {};
+
+var line = d3.svg.line(),
+    axis = d3.svg.axis().orient("left"),
+    color = d3.scale.category10().domain(['ats', 'bkt', 'bnt']),
+    background,
+    foreground;
+
+var svg = d3.select("body").append("svg")
+    .attr("width", w + m[1] + m[3])
+    .attr("height", h + m[0] + m[2])
+  .append("g")
+    .attr("transform", "translate(" + m[3] + "," + m[0] + ")");
+
+// d3.csv("cars.csv", function(error, cars) {
+d3.csv('data/coreDataOut.csv', function (err, data) {
+  if (err) throw new Error(err);
+
+  data = data
+    .filter(function (d) {
+      return d.river == 'WB';
+    })
+    .map(function (d) {
+      return {
+        tag: d.tag,
+        species: d.species,
+        year: +d.year,
+        sample: +d.sample,
+        section: +d.section,
+        season: +d.season,
+        len: +d.len
+      }
+    });
+
+  var speciesMap = d3.map();
+
+  data.forEach(function (d) {
+    speciesMap.set(d.tag, d.species);
+  });
+
+  var nested = d3.nest()
+    .key(function (d) { return d.tag })
+    .key(function (d) { return d.year })
+    .entries(data);
+
+  var dataFishYear = [];
+  nested.forEach(function (fish) {
+    fish.values.forEach(function (year) {
+      dataFishYear.push({
+        tag: fish.key,
+        year: year.key,
+        values: year.values
+      });
+    });
+  });
+
+  dataFishYear = dataFishYear.filter(function (d) {
+    return d.values.length === 4;
+  });
+
+  var fishSizes = d3.nest()
+    .key(function (d) { return d.tag })
+    .key(function (d) { return d.year })
+    .rollup(function (v) { return d3.max(v, function(d) { return d.len; }); })
+    .map(data);
+  // console.log(fishSizes);
+
+  dataFishYear.forEach(function (d) {
+    d.values.sort(function(a, b) { return a.season - b.season; });
+  })
+
+  dimensions = [1, 2, 3, 4];
+  x.domain(dimensions);
+
+  var sectionExtent = d3.extent(data, function (d) {
+    return d.section;
+  });
+  dimensions.map(function (dim) {
+    y[dim] = d3.scale.linear()
+      .domain(sectionExtent)
+      .range([h, 0]);
+  });
+
+  // wide = nested.map(function (d) {
+  //   var result = {
+  //     key: d.key
+  //   };
+
+  //   dimensions.forEach(function (dim) {
+  //     result[dim] = undefined;
+  //   });
+
+  //   d.values.forEach(function (e) {
+  //     result[e.sample] = e.section;
+  //   });
+
+  //   return result;
+  // });
+
+  // Add grey background lines for context.
+  background = svg.append("g")
+      .attr("class", "background")
+    .selectAll("path")
+      .data(dataFishYear)
+    .enter().append("path")
+      .attr("d", path);
+  // Add blue foreground lines for focus.
+  foreground = svg.append("g")
+      .attr("class", "foreground")
+    .selectAll("path")
+      .data(dataFishYear)
+    .enter().append("path")
+      .attr("d", path)
+      .style("stroke", function (d) {
+        return color(speciesMap.get(d.tag))
+      })
+      .style("stroke-width", function (d) {
+        return (fishSizes[d.tag][d.year]-50)/30;
+      });
+
+  // Add a group element for each dimension.
+  var g = svg.selectAll(".dimension")
+      .data(dimensions)
+    .enter().append("g")
+      .attr("class", "dimension")
+      .attr("transform", function(d) { return "translate(" + x(d) + ")"; })
+      .call(d3.behavior.drag()
+        .on("dragstart", function(d) {
+          dragging[d] = this.__origin__ = x(d);
+          background.attr("visibility", "hidden");
+        })
+        .on("drag", function(d) {
+          console.log(drag);
+          dragging[d] = Math.min(w, Math.max(0, this.__origin__ += d3.event.dx));
+          foreground.attr("d", path);
+          dimensions.sort(function(a, b) { return position(a) - position(b); });
+          x.domain(dimensions);
+          g.attr("transform", function(d) { return "translate(" + position(d) + ")"; })
+        })
+        .on("dragend", function(d) {
+          delete this.__origin__;
+          delete dragging[d];
+          transition(d3.select(this)).attr("transform", "translate(" + x(d) + ")");
+          transition(foreground)
+              .attr("d", path);
+          background
+              .attr("d", path)
+              .transition()
+              .delay(500)
+              .duration(0)
+              .attr("visibility", null);
+        }));
+
+  // Add an axis and title.
+  g.append("g")
+      .attr("class", "axis")
+      .each(function(d, i) {
+        if (i === 0) {
+          d3.select(this).call(axis.scale(y[d]));
+        }
+      })
+    .append("text")
+      .attr("text-anchor", "middle")
+      .attr("y", -9)
+      .text(String);
+
+  // Add and store a brush for each axis.
+  g.append("g")
+      .attr("class", "brush")
+      .each(function(d) {
+        y[d].brush = d3.svg.brush()
+          .y(y[d])
+          .on("brushstart", brushstart)
+          .on("brush", brush)
+        d3.select(this)
+          .call(y[d].brush);
+      })
+    .selectAll("rect")
+      .attr("x", -8)
+      .attr("width", 16);
+});
+
+function position(d) {
+  var v = dragging[d];
+  return v == null ? x(d) : v;
+}
+
+function transition(g) {
+  return g.transition().duration(500);
+}
+
+// Returns the path for a given data point.
+function path(d, i) {
+  var values = d.values.map(function (d, i) {
+    // console.log(i, [d.sample, d.section], [x(d.sample), y(d.section)]);
+    return [x(d.season), y[d.season](d.section)];
+  });
+  // console.log(values);
+  return line(values);
+  // var positions = dimensions.map(function(p) {
+  //   return [position(p), y[p](d[p])];
+  // });
+  // return line(positions);
+}
+
+// When brushing, don’t trigger axis dragging.
+function brushstart() {
+  d3.event.sourceEvent.stopPropagation();
+}
+
+// Handles a brush event, toggling the display of foreground lines.
+function brush() {
+  var actives = dimensions.filter(function(p) { return !y[p].brush.empty(); }),
+      extents = actives.map(function(p) { return y[p].brush.extent(); });
+  // console.log(actives, extents);
+  foreground.style("display", function(d) {
+    // console.log(d);
+    return actives.every(function(p, i) {
+      return d.values.some(function (v) {
+        return v.season === actives[i] && extents[i][0] <= v.section && v.section <= extents[i][1];
+      })
+      // return extents[i][0] <= d[p] && d[p] <= extents[i][1];
+    }) ? null : "none";
+  });
+}
+
+</script>
+</body>
+</html>

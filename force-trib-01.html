@@ -1,0 +1,189 @@
+
+<!DOCTYPE html>
+<meta charset="utf-8">
+<a target="_blank" style="outline:none;"><canvas width="960" height="580"></canvas></a>
+
+
+
+<script src="https://d3js.org/d3.v4.0.0-alpha.40.min.js"></script>
+<button id="btnNext">Next</button>
+<script>
+
+var canvas = document.querySelector("canvas"),
+    context = canvas.getContext("2d"),
+    width = canvas.width,
+    height = canvas.height,
+    searchRadius = 40;
+
+var timeStep = 0,
+    maxTimeStep = 10;
+    
+var numFish = 4;    
+
+var color = d3.scaleCategory10();
+
+/*
+var targets = [[0, 0], [200, 0], [400, 0], [600, 0]],
+    coordinates = [[0, 0], [200, 100], [400, 150], [600, -100]];
+
+var yScale = d3.scaleLinear()
+  .domain(coordinates.map(function(d) { return d[0]; }))
+  .range(coordinates.map(function(d) { return d[1]; }));
+*/
+
+//////
+var xy =
+  [{ river: 0,
+     desc: "mainBelowTrib1",
+     targets: [[0, 0], [10, 0], [20, 0], [30, 0]],
+     coordinates: [[0, 250], [10, 200], [20, 150], [30 ,100]] 
+   },
+   { river: 1,
+     desc: "mainAboveTrib1",
+     targets: [[40, 0], [30, 0]],
+     coordinates: [[40, 50], [30, 100]] 
+   },
+   { river: 2,
+     desc: "trib1",
+     targets: [[150, 0], [100, 0]],
+     coordinates: [[150, 100], [100, 100]]
+   }
+  ];
+
+xy.forEach(function (d) { 
+  d.yScale = d3.scaleLinear()
+   .domain(d.coordinates.map(function(dd) { return dd[0]; }))
+   .range( d.coordinates.map(function(dd) { return dd[1]; }))
+});
+
+
+//////
+var paths = [],
+    index = 0;
+
+for( var i = 0; i < xy.length; i++ ){
+  for( var j = 0; j < xy.length; j++ ){
+    console.log(i,j)
+
+    if (i == j){
+      paths[index] = { startRiver:i,
+                       endRiver: j,
+                       target: xy[i].targets,
+                       coordinates: xy[i].coordinates,
+                      };
+
+    }   
+    else {
+      paths[index] = { startRiver:i,
+                       endRiver: j,
+                       target: xy[i].targets.concat(xy[j].targets),
+                       coordinates: xy[i].coordinates.concat(xy[j].coordinates) ,
+                      };
+    }
+    
+    index = index + 1;
+    
+  }
+}
+
+paths.forEach(function (d) { 
+  d.yScale = d3.scaleLinear()
+   .domain(d.coordinates.map(function(dd) { return dd[0]; }))
+   .range( d.coordinates.map(function(dd) { return dd[1]; }))
+});
+
+var nodes = d3.range(numFish).map(function (index) {
+    return {
+      index: index,
+      type: ~~(Math.random()*5),
+      river: d3.range(maxTimeStep).map(function() {
+        return ~~(Math.random()*xy.length) 
+      })
+    }
+  });
+
+nodes.forEach(function (d) {
+  d.color = color(d.type);                     // assign color
+  d.r = ~~(Math.random() * 5 + 5);             // assign radius
+  
+  d.targetIndices = d3.range(maxTimeStep).map(function(i) {    // assign target based on river for each timestep
+    return ~~(Math.random()*xy[d.river[i]].targets.length)
+  });
+  
+  d.target = xy.filter( function(dd){ return dd.river == d.river[timeStep] })[0].targets[timeStep] //initial target depending on river
+
+//targets[d.targetIndices[timestep]]; // inital target
+})
+
+var simulation = d3.forceSimulation(nodes)
+ //  .drag(0.8)
+ // .alphaDecay(0.01)
+  .force("charge", d3.forceManyBody().strength(0))
+  .force("collide", d3.forceCollide().radius(function(d) { return d.r + 2; }).iterations(1))
+  .force("x", d3.forceX().x(function(d) { return d.target[0]; }).strength(.065))
+  .force("y", d3.forceY().y(function(d) { return d.target[1]; }).strength(.065))
+  .on("tick", ticked);
+
+function ticked() {
+  context.clearRect(0, 0, width, height);
+  context.save();
+  context.translate(100, height / 4);
+
+  context.beginPath();
+  xy.forEach(drawTarget);
+  context.fillStyle = "#bbb";
+  context.fill();
+  context.strokeStyle = "#bbb";
+  context.stroke();
+
+  nodes.forEach(drawNode);
+
+  context.restore();
+}
+
+function drawNode (d, i) {
+ 
+  var yScalePath = paths.filter( function(dd){ return dd.startRiver == d.river[timeStep] & dd.endRiver == d.river[timeStep + 1]})[0]
+
+    function getYScale(paths,r1,r2) {
+      return paths.filter( function(d) {
+        return d.startRiver == r1 & d.endRiver == r2;
+      });
+    }
+
+  
+  // console.log(i,d, d.river[timeStep], d.river[timeStep + 1],getYScale(paths,d.river[timeStep],d.river[timeStep + 1])[0].yScale(100))//yScalePath[0].yScale(100))
+  var thisPath = getYScale(paths,d.river[timeStep],d.river[timeStep + 1])[0].yScale;
+  context.beginPath();
+  context.moveTo(d.x, d.y + thisPath(d.x));
+  context.arc(d.x, d.y + thisPath(d.x), d.r, 0, 2 * Math.PI);
+  context.fillStyle = d.color;
+  context.fill();
+  context.strokeStyle = d.color;
+  context.stroke();
+}
+
+function drawTarget (d, i) {
+  d.targets.forEach( function (dd,ii) {
+    context.moveTo(dd[0], dd[1] + d.yScale(dd[0]));
+    context.arc(dd[0], dd[1] + d.yScale(dd[0]), 10, 0, 2 * Math.PI);
+  });
+}
+
+d3.select('#btnNext')
+  .on('click', function(e) {
+    timeStep = timeStep === (maxTimeStep - 1) ? 0 : timeStep + 1;
+    console.log("timeStep =",timeStep);
+
+    nodes.forEach(function (d) {
+      d.target = xy.filter( function(dd){ return dd.river == d.river[timeStep] })[0].targets[timeStep] ;
+    })
+
+// targets[d.targetIndices[timestep]]
+
+
+    simulation.alpha(1).nodes(nodes).restart();
+      
+  });
+
+</script>
