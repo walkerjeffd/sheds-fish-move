@@ -7,6 +7,8 @@ A collection of data visualization prototypes for exploring fish movements using
 
 Data collected by [Ben Letcher](https://github.com/bletcher) and others at USGS Conte Anadromous Fish Lab.
 
+Source code available at [walkerjeffd/sheds-fish-move](https://github.com/walkerjeffd/sheds-fish-move).
+
 ## Run Local Server
 
 Install `http-server` globally from npm:
