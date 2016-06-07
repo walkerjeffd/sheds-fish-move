@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title></title>
+  <!-- <link rel="stylesheet" href="http://cdnjs.cloudflare.com/ajax/libs/dc/1.7.5/dc.min.css"> -->
+  <link rel="stylesheet" href="http://dc-js.github.io/dc.js/css/dc.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/leaflet.css" />
+  <style>
+      #map {
+        height: 300px;
+        width: 400px;
+      }
+
+      div.tooltip {
+        position: absolute;
+        padding: 2px;
+        font: 12px sans-serif;
+        background: #fff;
+        pointer-events: none;
+      }
+  </style>
+</head>
+<body>
+
+<div id="river-chart">
+  <strong>River</strong>
+  <span class="reset" style="display: none;"> <span class="filter"></span></span>
+  <div class="clearfix"></div>
+</div>
+<div id="year-chart">
+  <strong>Year</strong>
+  <span class="reset" style="display: none;"> <span class="filter"></span></span>
+  <div class="clearfix"></div>
+</div>
+<div id="species-chart">
+  <strong>Species</strong>
+  <span class="reset" style="display: none;"> <span class="filter"></span></span>
+  <div class="clearfix"></div>
+</div>
+<div id="section-chart">
+  <strong>Section</strong>
+  <span class="reset" style="display: none;"> <span class="filter"></span></span>
+  <div class="clearfix"></div>
+</div>
+<div id="season-chart">
+  <strong>Season</strong>
+  <span class="reset" style="display: none;"> <span class="filter"></span></span>
+  <div class="clearfix"></div>
+</div>
+<div id="len-chart">
+  <strong>Fish Length</strong>
+  <span class="reset" style="display: none;"> <span class="filter"></span></span>
+  <div class="clearfix"></div>
+</div>
+
+<div>
+  <div id="map"></div>
+  <p><strong># Fish per Section</strong></p>
+</div>
+
+<script src="https://d3js.org/d3.v3.min.js" charset="utf-8"></script>
+<script src="https://d3js.org/queue.v1.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/crossfilter/1.3.12/crossfilter.js"></script>
+<script src="http://dc-js.github.io/dc.js/js/dc.js"></script>
+
+<script>
+var data, ndx;
+
+var map = L.map('map').setView([42.434, -72.669], 15);
+
+L.tileLayer('http://stamen-tiles-{s}.a.ssl.fastly.net/terrain/{z}/{x}/{y}.{ext}', {
+  attribution: 'Map tiles by <a href="http://stamen.com">Stamen Design</a>, <a href="http://creativecommons.org/licenses/by/3.0">CC BY 3.0</a> &mdash; Map data &copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+  subdomains: 'abcd',
+  minZoom: 4,
+  maxZoom: 18,
+  ext: 'png'
+}).addTo(map);
+
+map._initPathRoot();
+
+var svg = d3.select("#map").select("svg"),
+g = svg.append("g");
+
+var tooltip = d3.select("body").append("div")
+  .attr("class", "tooltip")
+  .style("opacity", 0);
+
+queue()
+  .defer(d3.csv, 'data/coreDataOut.csv')
+  .defer(d3.csv, 'data/WBCoordsForD3JS.csv')
+  .await(ready);
+
+function ready(error, rawData, locations) {
+  if (error) throw error;
+
+  data = rawData.map(function (d) {
+    return {
+      year: +d.year,
+      section: +d.section,
+      len: +d.len,
+      season: d.seasonStr,
+      species: d.species,
+      river: d.river
+    };
+  }).filter(function (d) {
+    return Object.keys(d).map(function (key) {
+        return d[key];
+      }).every(function (e) {
+        return typeof e === 'string' || isFinite(e);
+      });
+  }).filter(function (d) {
+    return d.section > 0;
+  });
+
+  ndx = crossfilter(data);
+  var all = ndx.groupAll();
+
+  var yearDim = ndx.dimension(function (d) {
+    return d.year;
+  });
+  var yearGroup = yearDim.group().reduceCount();
+
+  var sectionDim = ndx.dimension(function (d) {
+    return d.section;
+  });
+  var sectionGroup = sectionDim.group().reduceCount();
+
+  var riverSectionDim = ndx.dimension(function (d) {
+    return [d.river, d.section];
+  });
+  var riverSectionGroup = riverSectionDim.group().reduce(function (p, v) {
+    p.count += 1;
+    p.lenSum += v.len;
+    p.lenMean = p.count > 0 ? p.lenSum / p.count : 0;
+    return p;
+  }, function (p, v) {
+    p.count -= 1;
+    p.lenSum -= v.len;
+    p.lenMean = p.count > 0 ? p.lenSum / p.count : 0;
+    return p;
+  }, function () {
+    return {
+      count: 0,
+      lenSum: 0,
+      lenMean: 0
+    };
+  });
+
+  var lenDim = ndx.dimension(function (d) {
+    return Math.floor(d.len / 10) * 10;
+    // return d.len;
+  });
+  var lenGroup = lenDim.group().reduceCount();
+
+  var seasonDim = ndx.dimension(function (d) {
+    return d.season;
+  });
+  var seasonGroup = seasonDim.group().reduceCount();
+
+  var speciesDim = ndx.dimension(function (d) {
+    return d.species;
+  });
+  var speciesGroup = speciesDim.group().reduceCount();
+
+  var riverDim = ndx.dimension(function (d) {
+    return d.river;
+  });
+  var riverGroup = riverDim.group().reduceCount();
+
+  var yearChart = dc.barChart('#year-chart')
+    .width(400)
+    .height(200)
+    .margins({top: 10, right: 50, bottom: 30, left: 40})
+    .dimension(yearDim)
+    .group(yearGroup)
+    .transitionDuration(10)
+    .elasticY(true)
+    .centerBar(true)
+    .gap(1)
+    .alwaysUseRounding(true)
+    .round(function(n) { return Math.floor(n) + 0.5; })
+    .x(d3.scale.linear().domain([1996, 2016]))
+    .renderHorizontalGridLines(true)
+    .filterPrinter(function (filters) {
+      var filter = filters[0];
+      s = '[' + (filter[0] + 0.5) + ' -> ' + (filter[1] - 0.5) + ']';
+      return s;
+    });
+
+  var sectionChart = dc.barChart('#section-chart')
+    .width(400)
+    .height(200)
+    .margins({top: 10, right: 50, bottom: 30, left: 40})
+    .dimension(sectionDim)
+    .group(sectionGroup)
+    .transitionDuration(10)
+    .elasticY(true)
+    .centerBar(true)
+    .gap(1)
+    .x(d3.scale.linear().domain([-1, 47]))
+    .renderHorizontalGridLines(true)
+    .on('renderlet', function(chart, filter){
+      onFilter();
+    });
+
+  var seasonChart = dc.barChart('#season-chart')
+    .width(400)
+    .height(200)
+    .margins({top: 10, right: 50, bottom: 30, left: 40})
+    .dimension(seasonDim)
+    .group(seasonGroup)
+    .transitionDuration(10)
+    .elasticY(true)
+    .gap(1)
+    .x(d3.scale.ordinal().domain(["Winter", "Spring", "Summer", "Autumn"]))
+    .xUnits(dc.units.ordinal)
+    .renderHorizontalGridLines(true);
+
+  var lenChart = dc.barChart('#len-chart')
+    .width(400)
+    .height(200)
+    .margins({top: 10, right: 50, bottom: 30, left: 40})
+    .dimension(lenDim)
+    .group(lenGroup)
+    .transitionDuration(10)
+    .elasticY(true)
+    .centerBar(true)
+    // .gap(1)
+    .xUnits(function () { return 40; })
+    .x(d3.scale.linear().domain([0, 400]))
+    .renderHorizontalGridLines(true);
+
+  var speciesChart = dc.barChart('#species-chart')
+    .width(400)
+    .height(200)
+    .margins({top: 10, right: 50, bottom: 30, left: 40})
+    .dimension(speciesDim)
+    .group(speciesGroup)
+    .transitionDuration(10)
+    .elasticY(true)
+    .gap(1)
+    .x(d3.scale.ordinal().domain(["ats", "bkt", "bnt"]))
+    .xUnits(dc.units.ordinal)
+    .renderHorizontalGridLines(true);
+
+  var riverChart = dc.barChart('#river-chart')
+    .width(400)
+    .height(200)
+    .margins({top: 10, right: 50, bottom: 30, left: 40})
+    .dimension(riverDim)
+    .group(riverGroup)
+    .transitionDuration(10)
+    .elasticY(true)
+    .gap(1)
+    .x(d3.scale.ordinal().domain(["IL", "OL", "OS", "WB"]))
+    .xUnits(dc.units.ordinal)
+    .renderHorizontalGridLines(true);
+
+  yearChart.xAxis().tickFormat(function (v) {
+    return v.toString();
+  });
+
+  dc.constants.EVENT_DELAY = 0;
+  dc.renderAll();
+
+  // Map
+  var riverNames = {
+    'West Brook': 'WB',
+    'WB Mitchell': 'OS',
+    'WB Jimmy': 'OL',
+    'WB Obear': 'IL'
+  };
+
+  locations.forEach(function (d) {
+    d.lat = +d.lat;
+    d.lon = +d.lon;
+    d.river = riverNames[d.river1];
+  });
+
+  var locationsMap = d3.map();
+  locations.forEach(function(d) {
+    locationsMap.set([d.river, d.section], {
+      river: d.river,
+      section: d.section,
+      LatLng: new L.LatLng(d.lat, d.lon)
+    })
+    // d.LatLng = new L.LatLng(d.lat, d.lon);
+  });
+
+  var riverColors = d3.scale.category10()
+    .domain(['WB', 'OS', 'OL', 'IL']);
+
+  var radiusScale = d3.scale.sqrt()
+    // .domain([50, 200]) // value.lenMean
+    .domain([0, 1000]) // value.count
+    .range([0, 15])
+    .clamp(true);
+
+  var feature = g.selectAll("circle")
+    // .data(locations)
+    .data(riverSectionGroup.top(Infinity), function (d) {
+      return d.key;
+    })
+    .enter().append("circle")
+    .style("stroke", "black")
+    .style("opacity", 0.6)
+    .style("fill", function (d) {
+      return riverColors(d.key[0]);
+    })
+    .attr("r", function (d) {
+      return radiusScale(d.value.count);
+    })
+    .on("mouseover", function (d) {
+      d3.select(this)
+        .style("stroke", "red");
+
+      tooltip.html(d.key[0] + ' - ' + d.key[1])
+        .style("left", (d3.event.pageX + 15) + "px")
+        .style("top", (d3.event.pageY - 15) + "px")
+        .transition()
+        .duration(100)
+        .style("opacity", 1);
+    })
+    .on("mouseout", function (d) {
+      d3.select(this)
+        .style("stroke", "black");
+
+      tooltip.transition()
+        .duration(100)
+        .style("opacity", 0);
+    });
+
+  map.on("viewreset", onViewReset);
+  onViewReset();
+
+  function onFilter() {
+    feature
+      .data(riverSectionGroup.top(Infinity), function (d) {
+        return d.key;
+      })
+      .attr("r", function (d) {
+        return radiusScale(d.value.count);
+      });
+  }
+
+  function onViewReset() {
+    feature.attr("transform", function(d) {
+      var location = locationsMap.get(d.key);
+
+      if (!location) {
+        console.error("Undefined: ", d.key);
+      }
+      return "translate("+
+        map.latLngToLayerPoint(location.LatLng).x +","+
+        map.latLngToLayerPoint(location.LatLng).y +")";
+    });
+  }
+};
+</script>
+</body>
+</html>
